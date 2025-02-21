@@ -149,7 +149,7 @@ SQLite database is automatically created in the data directory, storing:
 
 ### Technology Stack
 
-- Python 3.13.0
+- Python 3.12.0
 - SQLite3 for data storage
 - Lxml for web data extraction
 - aiohttp for async HTTP requests
