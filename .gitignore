@@ -9,3 +9,5 @@ config/
 venv/
 
 data/
+
+.vscode/
