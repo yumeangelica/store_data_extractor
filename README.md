@@ -151,7 +151,7 @@ SQLite database is automatically created in the data directory, storing:
 
 - Python 3.13.0
 - SQLite3 for data storage
-- Beautiful Soup 4 for web data extraction
+- Lxml for web data extraction
 - aiohttp for async HTTP requests
 - Additional dependencies listed in requirements.txt
 
