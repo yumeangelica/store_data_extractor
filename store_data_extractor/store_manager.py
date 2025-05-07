@@ -52,6 +52,8 @@ class StoreManager:
     async def schedule_runner(self) -> None:
         """Manage store updates with graceful shutdown support."""
         await self.start_session()
+
+        await self.resend_unsent_products()
         try:
             while not self._shutdown_event.is_set():
                 await self.run_scheduled_tasks()
@@ -105,18 +107,50 @@ class StoreManager:
 
         return True
 
+    async def resend_unsent_products(self) -> None:
+        """Resend unsent products to the database."""
+        products = await self.db.get_unsent_products()
+        if not products:
+            return
+        self.logger.info("Resending unsent products...")
+        for product in products:
+            try:
+                product_id = product["id"] if "id" in product else None
+                if product_id:
+                    await self.db.mark_product_as_sent(product_id)
+                self.logger.info(f"Product {product['name']} marked as sent.")
+            except Exception as e:
+                self.logger.error(f"Failed to mark product {product['name']} as sent: {e}")
+
     async def fetch_store_data(self, store: StoreConfigDataType) -> None:
         """Fetch and process store data with improved error handling."""
         try:
+            await self.resend_unsent_products()
+
             async with SEMAPHORE:
                 task = asyncio.current_task()
                 if task:
                     self.current_tasks.append(task)
 
-                new_products = await main_program(self.session, store)
-                for product in new_products:
-                    print(f'name: {product["name"]}, url: {product["product_url"]}, image: {product["image_url"]}, prices: {product["prices"]}')
-                    print()
+                result = await main_program(self.session, store)
+                new_products, updated_products = result
+
+                if new_products:
+                    self.logger.info(f"New products found for {store['name']}:")
+                    for product in new_products:
+                        self.logger.info(f'New product: {product["name"]}, url: {product["product_url"]}, image: {product["image_url"]}, prices: {product["prices"]}')
+                        product_id = product["id"] if "id" in product else None
+                        if product_id:
+                            await self.db.mark_product_as_sent(product_id)
+                            self.logger.info(f"Product {product['name']} marked as sent.")
+                if updated_products:
+                    self.logger.info(f"Updated products found for {store['name']}:")
+                    for product in updated_products:
+                        self.logger.info(f'Updated product: {product["name"]}, url: {product["product_url"]}, image: {product["image_url"]}, prices: {product["prices"]}')
+                        product_id = product["id"] if "id" in product else None
+                        if product_id:
+                            await self.db.mark_product_as_sent(product_id)
+                            self.logger.info(f"Product {product['name']} marked as sent.")
 
         except asyncio.CancelledError:
             self.logger.warning(f"Task cancelled for {store['name']}")

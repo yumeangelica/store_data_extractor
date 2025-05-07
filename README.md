@@ -4,7 +4,7 @@ A web data extractor designed to monitor online stores and track product updates
 
 ## Project Information
 
-- **Version**: 1.0.0
+- **Version**: 1.1.0
 - **Author**: [yumeangelica](https://github.com/yumeangelica)
 - **License**: [CC BY-NC-ND 4.0](LICENSE.txt)
 
