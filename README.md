@@ -10,7 +10,7 @@ A web data extractor designed to monitor online stores and track product updates
 
 ## Project Overview
 
-The data extractor monitors specified online stores, tracks products and their prices, and stores historical data in a database.
+The data extractor monitors specified online stores, tracks products and their current prices, and stores product state in a database.
 
 Key features:
 
@@ -24,7 +24,7 @@ Key features:
 ### Project Structure
 
 ```
-jirai_sweeties/
+store_data_extractor/
 ├── data/
 │   ├── store_db.sqlite                 # SQLite database for store data
 ├── store_data_extractor/
@@ -33,13 +33,13 @@ jirai_sweeties/
 │   │   ├── stores.json                 # Store configurations
 │   │   └── user_agents.txt             # List of user agents
 │   ├── src/                            # Core functionality for data extraction
-│   │   ├── agent_helper.py             # Helper for managing user agents
 │   │   ├── data_extractor.py           # Data extraction logic
+│   │   ├── user_agent_manager.py       # User agent rotation
 │   │   └── store_database.py           # Database logic for stores
 │   ├── store_manager.py                # Store monitor entry point
-│   └── types.py                        # Type definitions for store data extractor
+│   └── store_types.py                  # Type definitions for store data extractor
 ├── utils/
-│   ├── data_directory_helper.py        # Helper functions for data directories
+│   ├── helpers.py                      # Helper functions
 │   └── logger.py                       # Logging functionality
 ├── venv/                               # Python virtual environment
 ├── .env                                # Environment variables
@@ -59,7 +59,9 @@ The project needs these configuration files in store_data_extractor/config/:
 
 - Store configurations and monitoring schedules. Determines which stores to monitor and how often.
 - Must be created manually
-- Defines store URLs, HTML selectors, and update intervals
+- Intentionally ignored by Git and Docker builds; provide it locally or mount it into runtime environments.
+- Defines store URLs, selectors, fetch options, and update intervals
+- Selectors can be XPath or CSS. XPath is tried first by default. Use `xpath:` or `css:` prefixes to force a selector type.
 
 Structure:
 stores.json
@@ -69,25 +71,33 @@ stores.json
   {
     "name": "store_name",
     "name_format": "Formatted Store Name",
+    "run_on_start": true,
     "options": {
       "base_url": "base_url_for_data_extraction",
       "site_main_url": "main_site_url",
-      "item_container_selector": "HTML_selector_for_item_containers",
-      "item_name_selector": "HTML_selector_for_item_names",
+      "item_container_selector": "selector_for_item_containers",
+      "item_name_selector": "selector_for_item_names",
       "item_price_selectors": [
         {
           "currency": "currency_code",
-          "selector": "HTML_selector_for_price"
+          "selector": "selector_for_price"
         }
       ],
-      "item_link_selector": "HTML_selector_for_item_links",
-      "item_image_selector": "HTML_selector_for_item_images",
-      "sold_out_selector": "HTML_selector_for_sold_out_items",
-      "next_page_selector": "HTML_selector_for_next_page",
+      "item_link_selector": "selector_for_item_links",
+      "item_image_selector": "selector_for_item_images",
+      "sold_out_selector": "selector_for_sold_out_items",
+      "next_page_selector": "selector_for_next_page",
       "next_page_selector_text": "Text_for_next_page_element",
       "next_page_attribute": "attribute_containing_next_page_url",
       "delay_between_requests": "time_in_seconds_between_requests",
-      "encoding": "character_encoding_used"
+      "encoding": "character_encoding_used",
+      "fetch_backend": "auto",
+      "curl_impersonate": "chrome",
+      "request_timeout": 30,
+      "proxy_url": "optional_proxy_url",
+      "request_headers": {
+        "Header-Name": "optional_header_value"
+      }
     },
     "schedule": {
       "minutes": "list_of_minutes_for_execution",
@@ -104,10 +114,11 @@ Explanation:
 
 - `name`: Unique identifier for the store.
 - `name_format`: User-friendly name for the store.
+- `run_on_start`: Optional. If `true`, fetch this store once immediately when the process starts, then continue normal scheduling.
 - `options`: Configuration options for data extraction.
   - `base_url`: Starting URL for extracting data.
   - `site_main_url`: Main website URL.
-  - `item_container_selector`: HTML selector for locating items.
+  - `item_container_selector`: Selector for locating items.
   - `item_name_selector`: Selector for item names.
   - `item_price_selectors`: List of price selectors with currency type.
   - `item_link_selector`: Selector for item links.
@@ -118,6 +129,11 @@ Explanation:
   - `next_page_attribute`: Attribute containing the next page URL.
   - `delay_between_requests`: Delay (in seconds) between requests.
   - `encoding`: Website's character encoding.
+  - `fetch_backend`: Optional. `auto` tries the normal async HTTP client first and falls back to the browser-fingerprint client. `aiohttp` or `curl_cffi` can be used to force one backend.
+  - `curl_impersonate`: Optional browser profile for the `curl_cffi` backend. Defaults to `chrome`.
+  - `request_timeout`: Optional request timeout in seconds.
+  - `proxy_url`: Optional proxy URL used by HTTP fetches.
+  - `request_headers`: Optional extra headers merged into the default browser-like request headers.
 - `schedule`: Monitoring schedule.
   - `minutes`: Minute intervals.
   - `hours`: Hour intervals or `*` for every hour.
@@ -138,21 +154,37 @@ Explanation:
 - Created automatically by the system
 - Do not modify manually
 
+### Running
+
+Create a virtual environment, install dependencies, and start the scheduler:
+
+```bash
+python3 -m venv venv
+venv/bin/python -m pip install --upgrade pip
+venv/bin/python -m pip install -r requirements.txt
+venv/bin/python run.py
+```
+
+The scheduler checks store schedules once per minute. Stores with `run_on_start: true` are fetched immediately on startup.
+
 ### Store database
 
-SQLite database is automatically created in the data directory, storing:
+SQLite database is automatically created in the `data/` directory, storing:
 
 - Store information
 - Product details
-- Price history
+- Current price data
 - Update timestamps
+
+The application logs the SQLite database path and a sync summary for each store run.
 
 ### Technology Stack
 
-- Python 3.12.0
+- Python 3.13
 - SQLite3 for data storage
 - Lxml for web data extraction
 - aiohttp for async HTTP requests
+- curl_cffi for sites that require browser-like TLS fingerprinting
 - Additional dependencies listed in requirements.txt
 
 ## License and Copyright

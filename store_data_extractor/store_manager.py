@@ -54,9 +54,12 @@ class StoreManager:
         await self.start_session()
 
         await self.resend_unsent_products()
+        await self.run_startup_tasks()
         try:
             while not self._shutdown_event.is_set():
-                await self.run_scheduled_tasks()
+                scheduled_count = await self.run_scheduled_tasks()
+                if scheduled_count == 0:
+                    self.logger.info("No stores scheduled at current time. Waiting for next check...")
                 try:
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=60)
                 except asyncio.TimeoutError:
@@ -64,11 +67,21 @@ class StoreManager:
         finally:
             await self.graceful_shutdown()
 
+    async def run_startup_tasks(self) -> None:
+        """Run stores configured to fetch immediately when the process starts."""
+        tasks = []
+        for store in self.stores or []:
+            if store.get("run_on_start", False):
+                self.logger.info(f"Running startup task for {store['name']}")
+                tasks.append(asyncio.create_task(self.fetch_store_data(store)))
 
-    async def run_scheduled_tasks(self) -> None:
+        if tasks:
+            await asyncio.gather(*tasks)
+
+    async def run_scheduled_tasks(self) -> int:
         """Run the scheduled tasks for all stores."""
         tasks = []
-        for store in self.stores: # type: ignore
+        for store in self.stores or []:
             if await self.should_run_now(store):
                 self.logger.info(f"Scheduling task for {store['name']}")
                 tasks.append(asyncio.create_task(self.fetch_store_data(store)))
@@ -76,6 +89,8 @@ class StoreManager:
         # Run all tasks in parallel
         if tasks:
             await asyncio.gather(*tasks)
+
+        return len(tasks)
 
 
     async def should_run_now(self, store: StoreConfigDataType) -> bool:
@@ -132,7 +147,7 @@ class StoreManager:
                 if task:
                     self.current_tasks.append(task)
 
-                result = await main_program(self.session, store)
+                result = await main_program(self.session, store, self.db)
                 new_products, updated_products = result
 
                 if new_products:

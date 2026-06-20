@@ -26,10 +26,11 @@ class StoreDatabase:
         self.db_lock = asyncio.Lock()
 
         try:
-            self.conn = connect(self.store_db_file_name, isolation_level=None, check_same_thread=False)
+            self.conn = connect(self.store_db_file_name, isolation_level=None, check_same_thread=False, timeout=30.0)
             self.conn.row_factory = Row
             self.cursor = self.conn.cursor()
             self.init_database()
+            self.logger.info(f"Using SQLite database file: {self.store_db_file_name}")
         except Error as e:
             self.logger.error(f"Failed to connect to the database {self.db_name}: {e}")
 
@@ -38,6 +39,7 @@ class StoreDatabase:
         self.logger.info(f"Initializing database {self.db_name}...")
         try:
             self.cursor.execute("PRAGMA foreign_keys = ON;")
+            self.cursor.execute("PRAGMA busy_timeout = 30000;")
             self.cursor.execute("PRAGMA journal_mode=WAL;")
             self.cursor.executescript("""
                 CREATE TABLE IF NOT EXISTS Store (
@@ -277,6 +279,11 @@ class StoreDatabase:
 
         new_products: List[ProductDataType] = []
         updated_products: List[ProductDataType] = []
+        inserted_count = 0
+        existing_count = 0
+        error_count = 0
+
+        self.logger.info(f"Syncing {len(current_items)} products for store {store_name}.")
         for item in current_items:
             try:
 
@@ -305,6 +312,13 @@ class StoreDatabase:
                     store_name=store_name
                 )
 
+                if product_status in ("new", "updated"):
+                    inserted_count += 1
+                elif product_status == "":
+                    existing_count += 1
+                else:
+                    error_count += 1
+
                 # Check if the product is new and not from the initial fetch
                 if product_status == "new" and product and not initial_fetch:
                     new_products.append(product)
@@ -315,7 +329,13 @@ class StoreDatabase:
 
 
             except Exception as e:
+                error_count += 1
                 self.logger.error(f"Error processing item {item}: {e}")
+
+        self.logger.info(
+            f"Database sync complete for {store_name}: "
+            f"{inserted_count} inserted, {existing_count} existing/updated, {error_count} errors."
+        )
 
         return (new_products, updated_products)
 
