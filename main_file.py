@@ -27,16 +27,11 @@ def signal_handler(signum, frame):
 
     try:
         loop = asyncio.get_running_loop()
-        # Create task for graceful shutdown
         loop.create_task(graceful_shutdown())
     except RuntimeError:
-        # If we're not in an event loop, create a new loop and run the shutdown
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(graceful_shutdown())
-    finally:
-        # Force exit after shutdown
-        sys.exit(0)
 
 async def main_run() -> None:
     global store_manager
