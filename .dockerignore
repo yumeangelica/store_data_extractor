@@ -1,0 +1,10 @@
+.git
+.vscode
+__pycache__
+**/__pycache__
+*.py[cod]
+.DS_Store
+.env
+venv
+data
+store_data_extractor/config
