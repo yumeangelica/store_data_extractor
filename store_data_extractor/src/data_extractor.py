@@ -115,6 +115,7 @@ def build_request_headers(agent: str, store: StoreOptionsDataType) -> dict[str, 
     headers.update(store.get("request_headers", {}))
     return headers
 
+
 async def try_get_page_content(url: str, session: Any, store: StoreOptionsDataType, max_retries: int = 3) -> Optional[str]:
     """Try to get page content with retries."""
     for attempt in range(max_retries):
@@ -417,4 +418,5 @@ async def main_program(session: Optional[ClientSession], store: StoreConfigDataT
             logger.info(f"Returning {len(all_new_products)} new products (including any found before errors)")
         if all_updated_products:
             logger.info(f"Returning {len(all_updated_products)} updated products (including any found before errors)")
-        return all_new_products, all_updated_products
+
+    return all_new_products, all_updated_products
