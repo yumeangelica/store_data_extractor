@@ -5,7 +5,7 @@ import logging
 import os
 import json
 from store_data_extractor.src.data_extractor import main_program
-from typing import Optional, List
+from typing import Dict, Optional, List
 from store_data_extractor.store_types import StoreConfigDataType
 
 # Path to the stores configuration file
@@ -30,18 +30,32 @@ class StoreManager:
         self.db: StoreDatabase = StoreDatabase()
         self.user_agent_manager = user_agent_manager # only one instance of UserAgentManager, prevent multiple instances
         self._shutdown_event = asyncio.Event() # Event to signal shutdown
+        self._shutdown_started = False
+        self._stopped = False
         self.current_tasks: List[asyncio.Task] = []
+        self._store_locks: Dict[str, asyncio.Lock] = {} # Prevent concurrent runs for the same store
+
+    def get_store_lock(self, store_name: str) -> asyncio.Lock:
+        """Get (or create) the lock that serializes runs for a single store."""
+        if store_name not in self._store_locks:
+            self._store_locks[store_name] = asyncio.Lock()
+        return self._store_locks[store_name]
 
 
     async def start_session(self) -> None:
         """Start a new session."""
         self.logger.info("Starting session...")
+        self._stopped = False
         if not self.session:
             self.session: Optional[aiohttp.ClientSession] = aiohttp.ClientSession()
 
 
     async def stop_session(self) -> None:
         """Close the session."""
+        if self._stopped:
+            return
+
+        self._stopped = True
         self.logger.info("Stopping session...")
         if self.session:
             await self.session.close()
@@ -64,8 +78,13 @@ class StoreManager:
                     await asyncio.wait_for(self._shutdown_event.wait(), timeout=60)
                 except asyncio.TimeoutError:
                     continue  # Normal timeout, continue with next iteration
+        except asyncio.CancelledError:
+            self.logger.warning("Schedule runner task was cancelled.")
+        except Exception as e:
+            self.logger.error(f"Error in schedule runner: {e}")
         finally:
             await self.graceful_shutdown()
+            await asyncio.sleep(0.1)
 
     async def run_startup_tasks(self) -> None:
         """Run stores configured to fetch immediately when the process starts."""
@@ -139,6 +158,11 @@ class StoreManager:
 
     async def fetch_store_data(self, store: StoreConfigDataType) -> None:
         """Fetch and process store data with improved error handling."""
+        async with self.get_store_lock(store['name']):
+            await self._fetch_store_data_locked(store)
+
+    async def _fetch_store_data_locked(self, store: StoreConfigDataType) -> None:
+        """Fetch and process store data; caller must hold the store lock."""
         try:
             await self.resend_unsent_products()
 
@@ -185,14 +209,18 @@ class StoreManager:
 
     async def graceful_shutdown(self) -> None:
         """Initiate graceful shutdown of all operations."""
-        if self._shutdown_event.is_set():
+        if self._shutdown_started:
             return
 
+        self._shutdown_started = True
         self._shutdown_event.set()
         self.logger.info("Initiating graceful shutdown...")
 
         # Cancel and wait for current tasks to complete
-        for task in self.current_tasks:
+        current_task = asyncio.current_task()
+        for task in list(self.current_tasks):
+            if task is current_task:
+                continue
             if not task.done():
                 task.cancel()
                 try:
@@ -205,5 +233,5 @@ class StoreManager:
 
     async def run_all_stores(self) -> None:
         """Fetch data for all stores."""
-        for store in self.stores: # type: ignore
+        for store in self.stores or []:
             await self.fetch_store_data(store)

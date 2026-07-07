@@ -4,7 +4,7 @@ A web data extractor designed to monitor online stores and track product updates
 
 ## Project Information
 
-- **Version**: 1.1.0
+- **Version**: 1.2.0
 - **Author**: [yumeangelica](https://github.com/yumeangelica)
 - **License**: [CC BY-NC-ND 4.0](LICENSE.txt)
 
@@ -180,7 +180,7 @@ The application logs the SQLite database path and a sync summary for each store 
 
 ### Technology Stack
 
-- Python 3.13
+- Python 3.13+ (Docker image uses python:3.14-alpine)
 - SQLite3 for data storage
 - Lxml for web data extraction
 - aiohttp for async HTTP requests
