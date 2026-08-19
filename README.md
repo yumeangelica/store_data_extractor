@@ -156,13 +156,11 @@ Explanation:
 
 ### Running
 
-Create a virtual environment, install dependencies, and start the scheduler:
+Sync the locked dependencies and start the scheduler:
 
 ```bash
-python3 -m venv venv
-venv/bin/python -m pip install --upgrade pip
-venv/bin/python -m pip install -r requirements.txt
-venv/bin/python run.py
+uv sync --locked
+uv run python run.py
 ```
 
 The scheduler checks store schedules once per minute. Stores with `run_on_start: true` are fetched immediately on startup.
@@ -194,3 +192,13 @@ Copyright (c) 2024-present yumeangelica. All rights reserved.
 This project is protected under Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 International License (CC BY-NC-ND 4.0).
 
 For complete license terms, see LICENSE.txt.
+
+## Development setup
+
+This project uses Python 3.14 and [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync --locked
+```
+
+Run project commands through `uv run` so they use the locked environment.
